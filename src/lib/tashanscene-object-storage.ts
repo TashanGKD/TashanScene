@@ -1,0 +1,80 @@
+export interface TashanSceneObjectStorageRequirement {
+  name: string;
+  configured: boolean;
+  configuredVia?: string;
+  purpose: string;
+}
+
+export interface TashanSceneObjectStorageEnv {
+  endpointUrl?: string;
+  bucketName?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  region: string;
+  requirements: TashanSceneObjectStorageRequirement[];
+}
+
+const STORAGE_ENV_REQUIREMENTS = [
+  {
+    name: 'TASHANSCENE_OBJECT_STORAGE_ENDPOINT_URL',
+    key: 'endpointUrl',
+    purpose: 'object storage endpoint for uploading generated assets and extracted tail frames',
+  },
+  {
+    name: 'TASHANSCENE_OBJECT_STORAGE_BUCKET_NAME',
+    key: 'bucketName',
+    purpose: 'object storage bucket for generated assets and extracted tail frames',
+  },
+  {
+    name: 'TASHANSCENE_OBJECT_STORAGE_ACCESS_KEY_ID',
+    key: 'accessKeyId',
+    purpose: 'object storage upload credential id',
+  },
+  {
+    name: 'TASHANSCENE_OBJECT_STORAGE_SECRET_ACCESS_KEY',
+    key: 'secretAccessKey',
+    purpose: 'object storage upload credential secret',
+  },
+] as const;
+
+function readEnv(name: string) {
+  return process.env[name]?.trim() || undefined;
+}
+
+export function getTashanSceneObjectStorageEnv(): TashanSceneObjectStorageEnv {
+  const values: Record<string, string | undefined> = {};
+  const requirements = STORAGE_ENV_REQUIREMENTS.map(item => {
+    const primary = readEnv(item.name);
+    const configuredVia = primary ? item.name : undefined;
+    values[item.key] = primary;
+    return {
+      name: item.name,
+      configured: Boolean(configuredVia),
+      configuredVia,
+      purpose: item.purpose,
+    };
+  });
+
+  return {
+    endpointUrl: values.endpointUrl,
+    bucketName: values.bucketName,
+    accessKeyId: values.accessKeyId,
+    secretAccessKey: values.secretAccessKey,
+    region: readEnv('TASHANSCENE_OBJECT_STORAGE_REGION') || 'cn-beijing',
+    requirements,
+  };
+}
+
+export function createTashanSceneObjectStorage() {
+  // Keep the SDK out of readiness/health routes; they only need env status.
+  // Load it only when an upload-capable path actually creates storage.
+  const { S3Storage } = require('coze-coding-dev-sdk') as typeof import('coze-coding-dev-sdk');
+  const env = getTashanSceneObjectStorageEnv();
+  return new S3Storage({
+    endpointUrl: env.endpointUrl,
+    accessKey: env.accessKeyId || '',
+    secretKey: env.secretAccessKey || '',
+    bucketName: env.bucketName,
+    region: env.region,
+  });
+}
